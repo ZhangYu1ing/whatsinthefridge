@@ -390,7 +390,7 @@
     document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-US', options);
 
     // Sample Real-Food Data (No Cartoons, Crisp Photos)
-    const inventoryData = [
+    const seedItems = [
       { id: 1, name: 'Whole Organic Milk', zone: 'chilled', category: 'Dairy', qty: 2, expiry: 'Fresh till Nov 12', img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400&auto=format&fit=crop' },
       { id: 2, name: 'Fresh Avocados', zone: 'pantry', category: 'Produce', qty: 4, expiry: 'Eat soon (3 days)', img: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?q=80&w=400&auto=format&fit=crop' },
       { id: 3, name: 'Grass-Fed Ribeye Steak', zone: 'freezer', category: 'Meat', qty: 1, expiry: 'Frozen (Dec 2026)', img: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?q=80&w=400&auto=format&fit=crop' },
@@ -398,6 +398,46 @@
       { id: 5, name: 'Greek Yogurt (Plain)', zone: 'chilled', category: 'Dairy', qty: 3, expiry: 'Fresh till Nov 18', img: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?q=80&w=400&auto=format&fit=crop' },
       { id: 6, name: 'Organic Cherry Tomatoes', zone: 'pantry', category: 'Produce', qty: 2, expiry: 'Eat soon (2 days)', img: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?q=80&w=400&auto=format&fit=crop' }
     ];
+
+    // Data layer: all reads/writes of items go through these functions.
+    const STORAGE_KEY = 'whatsinthefridge.items.v1';
+
+    function loadItems() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch (e) {
+        console.warn('Could not read saved items, using defaults.', e);
+      }
+      return seedItems.map(i => ({ ...i }));
+    }
+
+    // Returns false when the browser refuses to store (e.g. quota exceeded by large photos).
+    function saveItems() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(inventoryData));
+        return true;
+      } catch (e) {
+        alert('Could not save changes: browser storage is full or unavailable.');
+        return false;
+      }
+    }
+
+    function addItem(item) {
+      inventoryData.push(item);
+      saveItems();
+    }
+
+    function removeItem(id) {
+      const idx = inventoryData.findIndex(i => i.id === id);
+      if (idx !== -1) inventoryData.splice(idx, 1);
+      saveItems();
+    }
+
+    const inventoryData = loadItems();
 
     // UI Drawer Elements
     const drawer = document.getElementById('drawer');
@@ -616,7 +656,7 @@
       }
 
       const newId = inventoryData.length ? Math.max(...inventoryData.map(i => i.id)) + 1 : 1;
-      inventoryData.push({
+      addItem({
         id: newId,
         name,
         zone,
@@ -670,6 +710,7 @@
       item.qty = isNaN(qtyVal) || qtyVal < 0 ? 1 : qtyVal;
       item.expiry = document.getElementById('edit-expiry').value.trim() || 'No expiry set';
       item.zone = document.getElementById('edit-zone').value;
+      saveItems();
 
       closeEditItem();
       refreshCurrentView();
@@ -678,8 +719,7 @@
     document.getElementById('delete-edit-item').addEventListener('click', () => {
       if (editingId == null) return;
       if (!confirm('Remove this item from the fridge?')) return;
-      const idx = inventoryData.findIndex(i => i.id === editingId);
-      if (idx !== -1) inventoryData.splice(idx, 1);
+      removeItem(editingId);
       closeEditItem();
       refreshCurrentView();
     });
