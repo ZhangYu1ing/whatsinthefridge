@@ -2,7 +2,7 @@
 A mobile-first, single-file web prototype for tracking the food in your fridge and planning tonight's dinner.
 
 ## Features
-- **Home**: food summary grouped by zone (冷藏 fridge / 冷冻 freezer / 冰箱外 outside) and a dinner preview.
+- **Home**: food summary grouped by zone (cold store / freezer / outside fridge) and a dinner preview.
 - **Photo intake**: upload a photo and review recognized items (currently a mock, with hard-coded results).
 - **My fridge**: drag items between zones, edit name/quantity, or mark as used up.
 - **Dinner**: add a dish with ingredients; unknown ingredients are auto-added to the fridge zone.
