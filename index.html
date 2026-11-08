@@ -279,6 +279,10 @@
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
+            <label class="block text-xs font-semibold text-zinc-400 mb-1">Quantity</label>
+            <input id="add-qty" type="number" min="1" step="1" value="1" class="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500" />
+          </div>
+          <div>
             <label class="block text-xs font-semibold text-zinc-400 mb-1">Storage Zone</label>
             <select id="add-zone" class="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500">
               <option value="chilled">Cold Store</option>
@@ -287,10 +291,10 @@
               <option value="outside">Outside Fridge</option>
             </select>
           </div>
-          <div>
-            <label class="block text-xs font-semibold text-zinc-400 mb-1">Expiry</label>
-            <input id="add-expiry" type="text" placeholder="e.g. Nov 12" class="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500" />
-          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-zinc-400 mb-1">Expiry</label>
+          <input id="add-expiry" type="text" placeholder="e.g. Nov 12" class="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500" />
         </div>
       </div>
 
@@ -469,23 +473,28 @@
       selectCategory(currentZone);
     }
 
+    // Escape user-provided text before inserting it into innerHTML.
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     // Build a single item card. `editable` controls qty badge + edit button.
     function itemCard(item, editable) {
       return `
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-all">
           <div class="h-44 w-full bg-zinc-950 relative overflow-hidden">
-            <img src="${item.img}" alt="${item.name}" class="w-full h-full object-cover">
+            <img src="${escapeHtml(item.img)}" alt="${escapeHtml(item.name)}" class="w-full h-full object-cover">
             <span class="absolute top-3 right-3 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-black/60 backdrop-blur-md text-white border border-white/10">
-              ${item.zone}
+              ${escapeHtml(item.zone)}
             </span>
             ${editable ? `
             <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-600/90 text-white shadow">
-              x${item.qty ?? 1}
+              x${escapeHtml(item.qty ?? 1)}
             </span>` : ''}
           </div>
           <div class="p-4 space-y-2">
-            <h4 class="font-semibold text-white">${item.name}</h4>
-            <p class="text-xs text-emerald-400 font-medium">${item.expiry}</p>
+            <h4 class="font-semibold text-white">${escapeHtml(item.name)}</h4>
+            <p class="text-xs text-emerald-400 font-medium">${escapeHtml(item.expiry)}</p>
             ${editable ? `
             <button onclick="openEditItem(${item.id})" class="w-full mt-2 flex items-center justify-center space-x-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-lg transition-all">
               <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
@@ -497,8 +506,7 @@
     }
 
     function renderGrid(items) {
-      const editable = currentZone !== 'all';
-      inventoryGrid.innerHTML = items.map(item => itemCard(item, editable)).join('');
+      inventoryGrid.innerHTML = items.map(item => itemCard(item, true)).join('');
       lucide.createIcons();
     }
 
@@ -553,6 +561,7 @@
 
     function resetAddItem() {
       document.getElementById('add-name').value = '';
+      document.getElementById('add-qty').value = 1;
       document.getElementById('add-zone').value = 'chilled';
       document.getElementById('add-expiry').value = '';
       uploadInput.value = '';
@@ -599,6 +608,7 @@
       const name = document.getElementById('add-name').value.trim();
       const zone = document.getElementById('add-zone').value;
       const expiry = document.getElementById('add-expiry').value.trim();
+      const qtyVal = parseInt(document.getElementById('add-qty').value, 10);
 
       if (!name) {
         alert('Please enter an item name.');
@@ -611,6 +621,7 @@
         name,
         zone,
         category: '',
+        qty: isNaN(qtyVal) || qtyVal < 1 ? 1 : qtyVal,
         expiry: expiry ? ('Expiry: ' + expiry) : 'No expiry set',
         img: addImgData || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'
       });
