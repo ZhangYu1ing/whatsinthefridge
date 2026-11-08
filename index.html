@@ -25,23 +25,7 @@
         <i data-lucide="menu" class="w-6 h-6"></i>
       </button>
       <div class="flex items-center space-x-2">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 48 48"
-          width="36"
-          height="36"
-          fill="none"
-          stroke="#059669"
-          stroke-width="4"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="shrink-0"
-        >
-          <rect x="9" y="3" width="30" height="42" rx="4"/>
-          <path d="M9 19 H39"/>
-          <path d="M14 8 V15"/>
-          <path d="M14 24 V33"/>
-        </svg>
+        <i data-lucide="refrigerator" class="w-9 h-9 text-emerald-600 shrink-0"></i>
       </div>
       <!-- Logo / Brand Title -->
       <div class="flex items-center space-x-2">
@@ -293,8 +277,18 @@
           </div>
         </div>
         <div>
-          <label class="block text-xs font-semibold text-zinc-400 mb-1">Expiry</label>
-          <input id="add-expiry" type="text" placeholder="e.g. Nov 12" class="w-full px-3 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-emerald-500" />
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-xs font-semibold text-zinc-400">Expiry <span class="text-zinc-600 font-normal">(day optional)</span></label>
+            <label class="flex items-center space-x-1.5 text-xs text-zinc-400 cursor-pointer select-none">
+              <input id="add-no-expiry" type="checkbox" class="accent-emerald-500 w-3.5 h-3.5" />
+              <span>No expiry date</span>
+            </label>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <select id="add-expiry-year" class="px-2 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 disabled:opacity-40"></select>
+            <select id="add-expiry-month" class="px-2 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 disabled:opacity-40"></select>
+            <select id="add-expiry-day" class="px-2 py-2.5 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500 disabled:opacity-40"></select>
+          </div>
         </div>
       </div>
 
@@ -603,7 +597,7 @@
       document.getElementById('add-name').value = '';
       document.getElementById('add-qty').value = 1;
       document.getElementById('add-zone').value = 'chilled';
-      document.getElementById('add-expiry').value = '';
+      initExpirySelectors();
       uploadInput.value = '';
       addImgData = '';
       uploadPreview.src = '';
@@ -644,10 +638,99 @@
 
     document.getElementById('close-add-item').addEventListener('click', closeAddItem);
 
+    // --- Expiry date selectors (year / month / day, no past dates, day optional) ---
+    const expYearSel = document.getElementById('add-expiry-year');
+    const expMonthSel = document.getElementById('add-expiry-month');
+    const expDaySel = document.getElementById('add-expiry-day');
+    const noExpiryChk = document.getElementById('add-no-expiry');
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const YEARS_AHEAD = 6;
+
+    function initExpirySelectors() {
+      const now = new Date();
+      const curYear = now.getFullYear();
+
+      // Years: current year .. current + YEARS_AHEAD (default = current year)
+      expYearSel.innerHTML = '';
+      for (let y = curYear; y <= curYear + YEARS_AHEAD; y++) {
+        expYearSel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}</option>`);
+      }
+      expYearSel.value = curYear;
+      noExpiryChk.checked = false;
+      refreshMonthOptions();
+      applyNoExpiry();
+    }
+
+    function refreshMonthOptions() {
+      const now = new Date();
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth() + 1; // 1-12
+      const selYear = parseInt(expYearSel.value, 10);
+      const startMonth = selYear === curYear ? curMonth : 1;
+
+      const prev = parseInt(expMonthSel.value, 10);
+      expMonthSel.innerHTML = '';
+      for (let m = startMonth; m <= 12; m++) {
+        expMonthSel.insertAdjacentHTML('beforeend', `<option value="${m}">${MONTH_NAMES[m - 1]}</option>`);
+      }
+      // Keep previous selection if still valid, else default to first (current month)
+      if (prev >= startMonth && prev <= 12) expMonthSel.value = prev;
+      refreshDayOptions();
+    }
+
+    function refreshDayOptions() {
+      const now = new Date();
+      const curYear = now.getFullYear();
+      const curMonth = now.getMonth() + 1;
+      const curDay = now.getDate();
+      const selYear = parseInt(expYearSel.value, 10);
+      const selMonth = parseInt(expMonthSel.value, 10);
+
+      const daysInMonth = new Date(selYear, selMonth, 0).getDate();
+      const startDay = (selYear === curYear && selMonth === curMonth) ? curDay : 1;
+
+      const prev = expDaySel.value;
+      expDaySel.innerHTML = '<option value="">— (no day)</option>';
+      for (let d = startDay; d <= daysInMonth; d++) {
+        expDaySel.insertAdjacentHTML('beforeend', `<option value="${d}">${d}</option>`);
+      }
+      if (prev !== '' && Number(prev) >= startDay && Number(prev) <= daysInMonth) {
+        expDaySel.value = prev;
+      } else {
+        expDaySel.value = '';
+      }
+    }
+
+    // Enable/disable the date selectors based on the "No expiry date" checkbox
+    function applyNoExpiry() {
+      const off = noExpiryChk.checked;
+      expYearSel.disabled = off;
+      expMonthSel.disabled = off;
+      expDaySel.disabled = off;
+    }
+
+    noExpiryChk.addEventListener('change', applyNoExpiry);
+
+    expYearSel.addEventListener('change', refreshMonthOptions);
+    expMonthSel.addEventListener('change', refreshDayOptions);
+
+    // Build readable expiry text from the selectors
+    function getExpiryText() {
+      if (noExpiryChk.checked) return '';   // user opted out of an expiry date
+      const y = expYearSel.value;
+      const m = parseInt(expMonthSel.value, 10);
+      const dRaw = expDaySel.value;
+      if (!y || !m) return '';
+      if (dRaw === '') {
+        return `${MONTH_NAMES[m - 1]} ${y}`;          // month only, e.g. "Nov 2026"
+      }
+      return `${MONTH_NAMES[m - 1]} ${dRaw}, ${y}`;    // full date, e.g. "Nov 12, 2026"
+    }
+
     document.getElementById('save-add-item').addEventListener('click', () => {
       const name = document.getElementById('add-name').value.trim();
       const zone = document.getElementById('add-zone').value;
-      const expiry = document.getElementById('add-expiry').value.trim();
+      const expiryText = getExpiryText();
       const qtyVal = parseInt(document.getElementById('add-qty').value, 10);
 
       if (!name) {
@@ -662,7 +745,7 @@
         zone,
         category: '',
         qty: isNaN(qtyVal) || qtyVal < 1 ? 1 : qtyVal,
-        expiry: expiry ? ('Expiry: ' + expiry) : 'No expiry set',
+        expiry: expiryText ? ('Expiry: ' + expiryText) : 'No expiry set',
         img: addImgData || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'
       });
 
