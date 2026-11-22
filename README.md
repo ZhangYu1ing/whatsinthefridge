@@ -10,6 +10,19 @@ A mobile-first, single-file web prototype for tracking the food in your fridge a
 ## Run
 Open `index.html` in a browser. No build or dependencies required.
 
+## Tests
+Automated browser tests (pytest + Playwright) live in `test/`. They cover the sample data and expiry alert, add/edit/delete surviving a refresh, the scan hand-off, and the existing `scan/tests.html` unit tests. The pages are served from a temporary local server and the date is fixed to 2026-11-22.
+
+```
+python -m venv .venv
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
+pip install -r test/requirements.txt
+playwright install chromium       # or skip this and pass --browser-channel msedge
+pytest
+```
+
+The Tailwind and Lucide scripts are loaded from their CDNs, so the tests need internet access. CI runs `pytest` on every push and pull request (`.github/workflows/tests.yml`); screenshots and traces of failed tests are uploaded as an artifact.
+
 ## Status
 Prototype. Data is saved in the browser (`localStorage`) and survives refresh. Photo recognition uses OpenRouter (receipts not supported yet).
 

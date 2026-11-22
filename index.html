@@ -930,6 +930,7 @@
       updateExpiryAlert();
       // After returning from scan/scan.html with new items, show them.
       if (imported) selectCategory('all');
+      document.body.dataset.ready = 'true'; // signal for the automated tests
     }
     init();
   </script>
