@@ -3,7 +3,7 @@ A mobile-first, single-file web prototype for tracking the food in your fridge a
 
 ## Features
 - **Home**: food summary grouped by zone (cold store / freezer / outside fridge) and a dinner preview.
-- **Photo intake**: upload a photo and review recognized items (currently a mock, with hard-coded results).
+- **Photo intake**: take or upload a photo on the Scan page (`scan/`); a vision model on OpenRouter lists the food items, you pick a zone for each and add them to the fridge.
 - **My fridge**: drag items between zones, edit name/quantity, or mark as used up.
 - **Dinner**: add a dish with ingredients; unknown ingredients are auto-added to the fridge zone.
 
@@ -11,7 +11,19 @@ A mobile-first, single-file web prototype for tracking the food in your fridge a
 Open `index.html` in a browser. No build or dependencies required.
 
 ## Status
-Prototype. Data is saved in the browser (`localStorage`) and survives refresh. Photo recognition is simulated.
+Prototype. Data is saved in the browser (`localStorage`) and survives refresh. Photo recognition uses OpenRouter (receipts not supported yet).
+
+## Scan (photo recognition)
+All scan code lives in `scan/`. `index.html` only links to it and imports the result.
+
+- `scan/scan.html`: settings, photo, recognition, review. `scan-core.js`: pure helpers (parsing, validation, image compression). `scan-api.js`: the only file that calls the recognition provider.
+- **Run with a local server** (e.g. VS Code Live Server), not `file://`, so `index.html` and `scan/scan.html` share `localStorage`.
+- **Providers**: OpenRouter or Google Gemini (AI Studio), chosen in Scan → Settings.
+- **API key**: paste your key (openrouter.ai/keys or aistudio.google.com/apikey) in Settings and click Use. The key and model are kept in memory only while the Scan page is open; nothing is saved, so you enter them again each time. Never put the key in the code. A public deployment needs a backend proxy.
+- **Model**: must accept image input. On OpenRouter use a `:free` model with image input (openrouter.ai/models); for Gemini use a model name from AI Studio. Free models change often.
+- **Privacy**: photos are sent to the selected provider. Google may use data sent on the Gemini free tier to improve its products.
+- **Flow**: the model returns English item names only (brand included when readable). You set zone, quantity and category, then "Add to Fridge" stores the items under `whatsinthefridge.scan.pending.v1`, and `index.html` imports them on load and removes that key.
+- **Tests**: open `scan/tests.html` in a browser; all checks should be green (no network or API key needed).
 
 ## Data storage
 Items are persisted in the browser's `localStorage` under the key `whatsinthefridge.items.v1`.
@@ -36,9 +48,12 @@ localStorage.removeItem('whatsinthefridge.items.v1')
 - The date is hard-coded and does not update dynamically.
 - Multi-user sharing does not work yet.
 - The animations need a better design.
+- Navigation: menu pages open as overlays on top of the main page. To switch to another fridge zone, users must close the overlay with the X button (top right) and pick again from the main page. Planned: give each fridge zone its own page with a URL, so users can move between zones with the browser's Back button.
 
 ## Next Steps
 - Add a database for storing and sharing data.
 - Test and verify object detection for photo intake.
+- Scan: let the model also suggest each item's category and storage zone; the review list pre-fills them and the user confirms or changes them.
+- Scan: show each item's own picture in the fridge list instead of the default placeholder image (e.g. crop it from the scanned photo).
 - Register recipes from well-known chefs, so users can follow a chef's account and obtain recipes.
 - Add secret and surprise recipes that pop up based on a main ingredient in stock.

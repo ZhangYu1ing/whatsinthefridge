@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scan - WhatsInTheFridge</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+  </style>
+</head>
+<body class="bg-zinc-900 text-zinc-100 antialiased min-h-screen">
+
+  <!-- TOP BAR -->
+  <header class="sticky top-0 z-40 flex items-center justify-between px-6 py-4 bg-black/30 backdrop-blur-md border-b border-white/10">
+    <div class="flex items-center space-x-3">
+      <button id="back-btn" aria-label="Back to fridge" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+      </button>
+      <div>
+        <h1 class="text-lg font-bold text-white">Scan Groceries</h1>
+        <p class="text-xs text-zinc-400">Take a photo, review, then add to your fridge</p>
+      </div>
+    </div>
+    <button id="toggle-settings" aria-label="Settings" class="p-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all text-white">
+      <i data-lucide="settings" class="w-5 h-5"></i>
+    </button>
+  </header>
+
+  <main class="max-w-xl mx-auto p-6 space-y-5">
+
+    <!-- CURRENT MODEL (always visible; opens settings) -->
+    <button id="model-bar" type="button" class="w-full flex items-center justify-between px-4 py-3 bg-zinc-950 border border-zinc-800 hover:border-emerald-500 rounded-2xl text-left transition-all">
+      <span class="min-w-0">
+        <span class="block text-[11px] font-semibold text-zinc-500">Provider · Model · API Key</span>
+        <span id="model-bar-text" class="block text-sm text-white truncate"></span>
+      </span>
+      <span class="shrink-0 ml-3 flex items-center space-x-1 text-xs font-semibold text-emerald-400">
+        <i data-lucide="settings" class="w-4 h-4"></i><span>Change</span>
+      </span>
+    </button>
+
+    <!-- SETTINGS -->
+    <section id="settings-card" class="hidden bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-4">
+      <div class="flex items-center space-x-2">
+        <i data-lucide="key-round" class="w-4 h-4 text-amber-500"></i>
+        <h2 class="font-semibold text-white">Recognition Settings</h2>
+      </div>
+      <div>
+        <label for="provider" class="block text-xs font-semibold text-zinc-400 mb-1">Provider</label>
+        <select id="provider" class="w-full px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500"></select>
+        <p id="provider-note" class="text-[11px] text-amber-500 mt-1 hidden">Google may use data sent on the free tier to improve its products. Avoid photos with personal info.</p>
+      </div>
+      <div>
+        <label for="api-key" class="block text-xs font-semibold text-zinc-400 mb-1">API Key</label>
+        <div class="flex space-x-2">
+          <input id="api-key" type="password" autocomplete="off" placeholder="sk-or-v1-..." class="flex-1 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500" />
+          <button id="toggle-key" type="button" aria-label="Show or hide key" class="px-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-zinc-300">
+            <i data-lucide="eye" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <p class="text-[11px] text-zinc-500 mt-1">Not saved: kept only while this page is open, so you enter it again next time. <span id="key-help"></span> Do not share it.</p>
+      </div>
+      <div>
+        <label for="model-id" class="block text-xs font-semibold text-zinc-400 mb-1">Model ID</label>
+        <div class="flex space-x-2">
+          <input id="model-id" type="text" list="model-options" autocomplete="off" class="flex-1 min-w-0 px-3 py-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-sm text-white focus:outline-none focus:border-emerald-500" />
+          <button id="load-models" type="button" class="shrink-0 px-3 bg-zinc-800 hover:bg-zinc-700 rounded-xl text-xs font-semibold text-zinc-300 flex items-center space-x-1">
+            <i data-lucide="list" class="w-4 h-4"></i><span>Load models</span>
+          </button>
+        </div>
+        <datalist id="model-options"></datalist>
+        <p id="model-help" class="text-[11px] text-zinc-500 mt-1"></p>
+        <p id="models-msg" class="text-[11px] mt-1 hidden"></p>
+      </div>
+      <div class="flex space-x-2">
+        <button id="save-settings" class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-all">Use</button>
+        <button id="clear-settings" class="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-semibold rounded-xl transition-all">Clear</button>
+      </div>
+      <p id="settings-msg" class="text-xs text-emerald-400 hidden"></p>
+    </section>
+
+    <!-- PHOTO -->
+    <section class="bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-4">
+      <label for="photo-input" class="block cursor-pointer">
+        <div id="photo-placeholder" class="h-56 rounded-xl border-2 border-dashed border-zinc-700 hover:border-emerald-500 flex flex-col items-center justify-center text-zinc-400 transition-all">
+          <i data-lucide="camera" class="w-8 h-8 mb-2 text-emerald-400"></i>
+          <span class="text-sm font-semibold">Take or choose a photo</span>
+          <span class="text-xs text-zinc-500 mt-1">Groceries on a table work best</span>
+        </div>
+        <img id="photo-preview" alt="Selected photo" class="hidden w-full max-h-80 object-contain rounded-xl bg-black" />
+      </label>
+      <input id="photo-input" type="file" accept="image/*" capture="environment" class="hidden" />
+      <p class="text-[11px] text-zinc-500">The photo is sent to the selected provider (OpenRouter or Google) for recognition.</p>
+      <button id="recognize-btn" disabled class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold rounded-xl transition-all flex items-center justify-center space-x-2">
+        <i data-lucide="scan-search" class="w-5 h-5"></i>
+        <span id="recognize-label">Recognize Items</span>
+      </button>
+      <p id="status-msg" role="status" class="text-sm hidden"></p>
+    </section>
+
+    <!-- RESULTS -->
+    <section id="results-card" class="hidden bg-zinc-950 border border-zinc-800 rounded-2xl p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold text-white">Review Items</h2>
+        <span id="results-count" class="text-xs text-zinc-400"></span>
+      </div>
+      <p class="text-xs text-zinc-400">Fix names, pick a storage zone for each item, remove anything wrong.</p>
+      <div id="rows" class="space-y-3"></div>
+      <button id="add-row" class="w-full py-2.5 border border-dashed border-zinc-700 hover:border-emerald-500 text-zinc-300 text-sm font-semibold rounded-xl transition-all flex items-center justify-center space-x-1.5">
+        <i data-lucide="plus" class="w-4 h-4"></i><span>Add item</span>
+      </button>
+      <button id="submit-btn" disabled class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-bold rounded-xl transition-all">
+        Add to Fridge
+      </button>
+      <p id="submit-hint" class="text-xs text-amber-500 hidden">Every item needs a name and a storage zone.</p>
+    </section>
+
+    <!-- DEBUG -->
+    <details class="bg-zinc-950 border border-zinc-800 rounded-2xl p-5">
+      <summary class="cursor-pointer text-sm font-semibold text-zinc-400">Debug</summary>
+      <pre id="debug-out" class="mt-3 text-[11px] text-zinc-400 whitespace-pre-wrap break-words max-h-80 overflow-auto">No requests yet.</pre>
+    </details>
+  </main>
+
+  <script src="scan-core.js"></script>
+  <script src="scan-api.js"></script>
+  <script>
+    lucide.createIcons();
+    const S = window.ScanCore;
+    const $ = id => document.getElementById(id);
+
+    const ZONE_LABELS = { chilled: 'Cold Store', pantry: 'Pantry', freezer: 'Freezer', outside: 'Outside Fridge' };
+
+    // --- Navigation ---
+    function goHome() {
+      if (history.length > 1 && document.referrer && new URL(document.referrer).origin === location.origin) {
+        history.back();
+      } else {
+        location.href = '../index.html';
+      }
+    }
+    $('back-btn').addEventListener('click', goHome);
+
+    // --- Debug panel ---
+    function debug(lines) {
+      $('debug-out').textContent = lines.join('\n');
+    }
+
+    // --- Status line ---
+    function setStatus(text, kind) {
+      const el = $('status-msg');
+      el.textContent = text || '';
+      el.classList.toggle('hidden', !text);
+      el.className = 'text-sm ' + (text ? '' : 'hidden ') +
+        (kind === 'error' ? 'text-amber-500' : kind === 'ok' ? 'text-emerald-400' : 'text-zinc-400');
+    }
+
+    // --- Settings ---
+    const providerSel = $('provider');
+    Object.entries(S.PROVIDERS).forEach(([id, p]) => {
+      providerSel.insertAdjacentHTML('beforeend', `<option value="${id}">${p.label}</option>`);
+    });
+
+    // Show the stored key/model of one provider in the form (does not save).
+    function showProvider(provider) {
+      const s = S.loadSettings();
+      const p = S.PROVIDERS[provider];
+      providerSel.value = provider;
+      $('api-key').value = s.providers[provider].apiKey;
+      $('api-key').placeholder = p.keyPlaceholder;
+      $('model-id').value = s.providers[provider].model;
+      $('key-help').textContent = p.keyHelp;
+      $('model-help').textContent = p.modelHelp;
+      $('provider-note').classList.toggle('hidden', provider !== 'gemini');
+      $('model-options').innerHTML = '';
+      $('models-msg').classList.add('hidden');
+    }
+
+    function showModelsMsg(text, isError) {
+      const el = $('models-msg');
+      el.textContent = text;
+      el.className = 'text-[11px] mt-1 ' + (isError ? 'text-amber-500' : 'text-emerald-400');
+    }
+
+    // Fetch the models this key can use (image-capable) and offer them as suggestions in the Model ID box.
+    $('load-models').addEventListener('click', async () => {
+      const btn = $('load-models');
+      btn.disabled = true;
+      showModelsMsg('Loading models…', false);
+      try {
+        const models = await window.ScanApi.listModels(providerSel.value, $('api-key').value.trim());
+        const list = $('model-options');
+        list.innerHTML = '';
+        models.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.id;            // the ID that is sent to the API
+          opt.label = m.label;         // human-readable name shown in the dropdown
+          list.appendChild(opt);
+        });
+        showModelsMsg(models.length
+          ? `${models.length} models found. Click the Model ID box (or clear it) to pick one, then Save.`
+          : 'No image-capable models found for this key.', !models.length);
+        if (models.length) { $('model-id').value = ''; $('model-id').focus(); }
+      } catch (err) {
+        showModelsMsg(err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    function fillSettings() {
+      const s = S.loadSettings();
+      showProvider(s.provider);
+      $('model-bar-text').textContent = `${S.PROVIDERS[s.provider].label} · ${s.model}` + (s.apiKey ? '  ·  key set' : '  ·  no key yet');
+      if (!s.apiKey) $('settings-card').classList.remove('hidden');
+    }
+    providerSel.addEventListener('change', () => showProvider(providerSel.value));
+    function flashSettings(msg) {
+      const el = $('settings-msg');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 2000);
+    }
+    $('toggle-settings').addEventListener('click', () => $('settings-card').classList.toggle('hidden'));
+    $('model-bar').addEventListener('click', () => $('settings-card').classList.toggle('hidden'));
+    $('toggle-key').addEventListener('click', () => {
+      const input = $('api-key');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    });
+    $('save-settings').addEventListener('click', () => {
+      const modelErr = window.ScanApi.checkModelId($('model-id').value);
+      if (modelErr) { showModelsMsg(modelErr, true); $('model-id').focus(); return; }
+      S.saveSettings({ provider: providerSel.value, apiKey: $('api-key').value, model: $('model-id').value });
+      fillSettings();
+      flashSettings('Ready (not saved).');
+    });
+    $('clear-settings').addEventListener('click', () => {
+      S.clearSettings(providerSel.value);
+      fillSettings();
+      flashSettings('Cleared.');
+    });
+
+    // --- Photo ---
+    let photoDataUrl = '';
+    $('photo-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setStatus('Preparing photo…');
+      try {
+        photoDataUrl = await S.compressImage(file, 1024);
+        $('photo-preview').src = photoDataUrl;
+        $('photo-preview').classList.remove('hidden');
+        $('photo-placeholder').classList.add('hidden');
+        $('recognize-btn').disabled = false;
+        setStatus('');
+        debug([`Original: ${Math.round(file.size / 1024)} KB (${file.type || 'unknown type'})`,
+               `Compressed: ~${S.dataUrlKB(photoDataUrl)} KB JPEG, max side 1024px`]);
+      } catch (err) {
+        photoDataUrl = '';
+        $('recognize-btn').disabled = true;
+        setStatus(err.message, 'error');
+      }
+    });
+
+    // --- Recognize ---
+    $('recognize-btn').addEventListener('click', async () => {
+      if (!photoDataUrl) return;
+      const settings = S.loadSettings();
+      const btn = $('recognize-btn');
+      btn.disabled = true;
+      $('recognize-label').textContent = 'Recognizing…';
+      setStatus('Sending photo to ' + settings.model + '…');
+      try {
+        const { names, raw, ms } = await window.ScanApi.recognizeImage(photoDataUrl, settings);
+        appendRows(names);
+        setStatus(`Found ${names.length} item(s) in ${(ms / 1000).toFixed(1)}s. Review them below.`, 'ok');
+        debug([`Model: ${settings.provider} / ${settings.model}`, `Time: ${ms} ms`, `Parsed: ${JSON.stringify(names)}`, '', 'Raw response:', raw]);
+      } catch (err) {
+        setStatus(err.message, 'error');
+        debug([`Model: ${settings.provider} / ${settings.model}`, `Error: ${err.code || 'unknown'} — ${err.message}`, '', 'Raw response:', err.raw || '(none)']);
+        if (['no-key', 'auth', 'credits', 'quota', 'http', 'no-vision', 'bad-model'].includes(err.code)) $('settings-card').classList.remove('hidden');
+        if (err.code === 'empty') showResults();
+      } finally {
+        btn.disabled = false;
+        $('recognize-label').textContent = 'Recognize Again';
+      }
+    });
+
+    // --- Review rows ---
+    const rowsEl = $('rows');
+
+    function showResults() {
+      $('results-card').classList.remove('hidden');
+      validate();
+    }
+
+    function appendRows(names) {
+      // Skip names that are already in the list (case-insensitive).
+      const existing = new Set(readRows().map(r => r.name.toLowerCase()));
+      names.forEach(n => { if (!existing.has(n.toLowerCase())) addRow(n); });
+      showResults();
+    }
+
+    function addRow(name) {
+      const row = document.createElement('div');
+      row.className = 'scan-row bg-zinc-900 border border-zinc-800 rounded-xl p-3 space-y-2';
+      row.innerHTML = `
+        <div class="flex items-center space-x-2">
+          <input data-f="name" type="text" aria-label="Item name" placeholder="Item name" class="flex-1 px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500" />
+          <button data-f="remove" type="button" aria-label="Remove item" class="p-2 text-zinc-500 hover:text-amber-500 rounded-lg">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+          <select data-f="zone" aria-label="Storage zone" class="col-span-1 px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500">
+            <option value="">Zone…</option>
+            ${S.ZONES.map(z => `<option value="${z}">${ZONE_LABELS[z]}</option>`).join('')}
+          </select>
+          <input data-f="qty" type="number" min="1" value="1" aria-label="Quantity" class="px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500" />
+          <input data-f="category" type="text" aria-label="Category (optional)" placeholder="Category" class="px-2 py-2 bg-zinc-950 border border-zinc-800 rounded-lg text-xs text-white focus:outline-none focus:border-emerald-500" />
+        </div>`;
+      row.querySelector('[data-f="name"]').value = name || ''; // set via .value: no HTML injection
+      row.querySelector('[data-f="remove"]').addEventListener('click', () => { row.remove(); validate(); });
+      row.addEventListener('input', validate);
+      row.addEventListener('change', validate);
+      rowsEl.appendChild(row);
+      lucide.createIcons();
+      return row;
+    }
+
+    function readRows() {
+      return [...rowsEl.querySelectorAll('.scan-row')].map(r => ({
+        name: r.querySelector('[data-f="name"]').value,
+        zone: r.querySelector('[data-f="zone"]').value,
+        qty: r.querySelector('[data-f="qty"]').value,
+        category: r.querySelector('[data-f="category"]').value
+      }));
+    }
+
+    function validate() {
+      const rows = readRows();
+      const { errors, ok } = S.buildPendingItems(rows);
+      [...rowsEl.querySelectorAll('.scan-row')].forEach((r, i) => {
+        const errs = errors[i] || [];
+        r.querySelector('[data-f="name"]').classList.toggle('border-amber-500', errs.includes('name'));
+        r.querySelector('[data-f="zone"]').classList.toggle('border-amber-500', errs.includes('zone'));
+      });
+      $('submit-btn').disabled = !ok;
+      $('submit-hint').classList.toggle('hidden', ok || rows.length === 0);
+      $('results-count').textContent = rows.length ? `${rows.length} item(s)` : 'No items';
+      return ok;
+    }
+
+    $('add-row').addEventListener('click', () => {
+      const row = addRow('');
+      validate();
+      row.querySelector('[data-f="name"]').focus();
+    });
+
+    // --- Submit: hand items to index.html via a pending key ---
+    $('submit-btn').addEventListener('click', () => {
+      const { items, ok } = S.buildPendingItems(readRows());
+      if (!ok) { validate(); return; }
+      try {
+        localStorage.setItem(S.PENDING_KEY, JSON.stringify(items));
+      } catch (e) {
+        setStatus('Could not save: browser storage is full or unavailable.', 'error');
+        return;
+      }
+      // replace: Back from index should not return to an already-submitted scan.
+      location.replace('../index.html');
+    });
+
+    S.purgeStoredSettings(); // delete any key saved by older versions
+    fillSettings();
+  </script>
+</body>
+</html>

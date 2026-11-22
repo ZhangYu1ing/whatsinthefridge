@@ -445,6 +445,41 @@
 
     const inventoryData = loadItems();
 
+    // Import items handed over by scan/scan.html (stored under a temporary key, then removed).
+    const SCAN_PENDING_KEY = 'whatsinthefridge.scan.pending.v1';
+    const VALID_ZONES = ['chilled', 'pantry', 'freezer', 'outside'];
+
+    function importPendingScan() {
+      let pending;
+      try {
+        pending = JSON.parse(localStorage.getItem(SCAN_PENDING_KEY) || 'null');
+      } catch (e) {
+        pending = null;
+      }
+      localStorage.removeItem(SCAN_PENDING_KEY); // remove first so a refresh never imports twice
+      if (!Array.isArray(pending)) return 0;
+
+      let count = 0;
+      pending.forEach(p => {
+        if (!p || typeof p.name !== 'string' || !p.name.trim() || !VALID_ZONES.includes(p.zone)) return;
+        const qty = parseInt(p.qty, 10);
+        inventoryData.push({
+          id: inventoryData.length ? Math.max(...inventoryData.map(i => i.id)) + 1 : 1,
+          name: p.name.trim(),
+          zone: p.zone,
+          category: typeof p.category === 'string' ? p.category : '',
+          qty: isNaN(qty) || qty < 1 ? 1 : qty,
+          expiry: typeof p.expiry === 'string' && p.expiry ? p.expiry : 'No expiry set',
+          img: typeof p.img === 'string' && p.img ? p.img : 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'
+        });
+        count++;
+      });
+      if (count) saveItems();
+      return count;
+    }
+
+    const importedFromScan = importPendingScan();
+
     // UI Drawer Elements
     const drawer = document.getElementById('drawer');
     const backdrop = document.getElementById('drawer-backdrop');
@@ -577,11 +612,10 @@
       inventoryModal.classList.remove('flex');
     });
 
-    // Scan Modal Toggle
+    // Scan: opens the standalone page in scan/ (old scan-modal below is kept but no longer opened)
     const scanModal = document.getElementById('scan-modal');
     document.getElementById('open-scan').addEventListener('click', () => {
-      scanModal.classList.remove('hidden');
-      scanModal.classList.add('flex');
+      location.href = 'scan/scan.html';
     });
     document.getElementById('close-scan').addEventListener('click', () => {
       scanModal.classList.add('hidden');
@@ -837,6 +871,9 @@
       closeEditItem();
       refreshCurrentView();
     });
+
+    // After returning from scan/scan.html with new items, show them.
+    if (importedFromScan) selectCategory('all');
   </script>
 </body>
 </html>

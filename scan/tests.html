@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scan Tests</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-900 text-zinc-100 p-6 font-mono text-sm">
+  <h1 class="text-lg font-bold mb-2">Scan tests</h1>
+  <p id="summary" class="mb-4 font-bold"></p>
+  <ul id="results" class="space-y-1"></ul>
+
+  <script src="scan-core.js"></script>
+  <script src="scan-api.js"></script>
+  <script>
+    const S = window.ScanCore;
+    const results = [];
+
+    function eq(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+    async function test(name, fn) {
+      try { await fn(); results.push({ name, ok: true }); }
+      catch (e) { results.push({ name, ok: false, msg: e.message }); }
+    }
+    function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
+    function assertEq(actual, expected) {
+      if (!eq(actual, expected)) throw new Error(`expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+    }
+
+    // Minimal in-memory Storage for settings tests (does not touch real localStorage).
+    function memStorage() {
+      const m = new Map();
+      return { getItem: k => m.has(k) ? m.get(k) : null, setItem: (k, v) => m.set(k, String(v)), removeItem: k => m.delete(k) };
+    }
+
+    // Fake fetch returning a given status/body.
+    function fakeFetch(status, body, capture) {
+      return async (url, opts) => {
+        if (capture) { capture.url = url; capture.opts = opts; }
+        return { ok: status >= 200 && status < 300, status, text: async () => typeof body === 'string' ? body : JSON.stringify(body) };
+      };
+    }
+    const chat = content => ({ choices: [{ message: { content } }] });
+
+    (async () => {
+      // ---------- parseNames ----------
+      await test('parseNames: plain JSON array', () => assertEq(S.parseNames('["Milk","Eggs"]'), ['Milk', 'Eggs']));
+      await test('parseNames: ```json fence', () => assertEq(S.parseNames('```json\n["Milk", "Eggs"]\n```'), ['Milk', 'Eggs']));
+      await test('parseNames: fence without language', () => assertEq(S.parseNames('```\n["Milk"]\n```'), ['Milk']));
+      await test('parseNames: prose around array', () => assertEq(S.parseNames('Sure! Here you go: ["Arla Milk","Broccoli"] Hope it helps.'), ['Arla Milk', 'Broccoli']));
+      await test('parseNames: array of {name} objects', () => assertEq(S.parseNames('[{"name":"Milk"},{"name":"Eggs","qty":2}]'), ['Milk', 'Eggs']));
+      await test('parseNames: {items:[...]} wrapper', () => assertEq(S.parseNames('{"items":["Milk"]}'), ['Milk']));
+      await test('parseNames: trims and collapses spaces', () => assertEq(S.parseNames('["  Greek   Yogurt "]'), ['Greek Yogurt']));
+      await test('parseNames: case-insensitive dedupe keeps first', () => assertEq(S.parseNames('["Milk","milk","MILK","Eggs"]'), ['Milk', 'Eggs']));
+      await test('parseNames: drops empty / non-string / overlong', () => assertEq(S.parseNames('["", 3, null, {"x":1}, "' + 'a'.repeat(81) + '", "Egg"]'), ['Egg']));
+      await test('parseNames: empty array', () => assertEq(S.parseNames('[]'), []));
+      await test('parseNames: invalid inputs return []', () => {
+        assertEq(S.parseNames(''), []);
+        assertEq(S.parseNames(null), []);
+        assertEq(S.parseNames(undefined), []);
+        assertEq(S.parseNames('I cannot see any food.'), []);
+        assertEq(S.parseNames('[broken'), []);
+        assertEq(S.parseNames('{"a":1}'), []);
+      });
+
+      // ---------- buildPendingItems ----------
+      await test('buildPendingItems: valid row gets defaults', () => {
+        const r = S.buildPendingItems([{ name: ' Milk ', zone: 'chilled', qty: '', category: '' }]);
+        assert(r.ok, 'should be ok');
+        assertEq(r.items, [{ name: 'Milk', zone: 'chilled', category: '', qty: 1, expiry: 'No expiry set', img: S.DEFAULT_IMG }]);
+      });
+      await test('buildPendingItems: keeps qty and category', () => {
+        const r = S.buildPendingItems([{ name: 'Eggs', zone: 'pantry', qty: '6', category: 'Dairy' }]);
+        assertEq([r.items[0].qty, r.items[0].category], [6, 'Dairy']);
+      });
+      await test('buildPendingItems: qty < 1 or NaN becomes 1', () => {
+        const r = S.buildPendingItems([{ name: 'A', zone: 'freezer', qty: '0' }, { name: 'B', zone: 'outside', qty: 'x' }]);
+        assertEq(r.items.map(i => i.qty), [1, 1]);
+      });
+      await test('buildPendingItems: missing zone -> error, not ok', () => {
+        const r = S.buildPendingItems([{ name: 'Milk', zone: '' }]);
+        assert(!r.ok); assertEq(r.errors[0], ['zone']);
+      });
+      await test('buildPendingItems: unknown zone rejected (whitelist)', () => {
+        const r = S.buildPendingItems([{ name: 'Milk', zone: 'garage' }]);
+        assert(!r.ok); assertEq(r.errors[0], ['zone']);
+      });
+      await test('buildPendingItems: empty name -> error', () => {
+        const r = S.buildPendingItems([{ name: '   ', zone: 'chilled' }]);
+        assert(!r.ok); assertEq(r.errors[0], ['name']);
+      });
+      await test('buildPendingItems: one bad row blocks submit', () => {
+        const r = S.buildPendingItems([{ name: 'Milk', zone: 'chilled' }, { name: 'Eggs', zone: '' }]);
+        assert(!r.ok); assertEq(r.errors, [[], ['zone']]);
+      });
+      await test('buildPendingItems: empty list not ok', () => {
+        assert(!S.buildPendingItems([]).ok); assert(!S.buildPendingItems(null).ok);
+      });
+
+      // ---------- settings ----------
+      const OR = S.PROVIDERS.openrouter.defaultModel, GM = S.PROVIDERS.gemini.defaultModel;
+      const pick = s => ({ provider: s.provider, apiKey: s.apiKey, model: s.model });
+      await test('settings: defaults when empty', () => assertEq(pick(S.loadSettings(memStorage())), { provider: 'openrouter', apiKey: '', model: OR }));
+      await test('settings: save/load round trip with trim', () => {
+        const st = memStorage();
+        S.saveSettings({ provider: 'openrouter', apiKey: '  sk-test ', model: ' some/model ' }, st);
+        assertEq(pick(S.loadSettings(st)), { provider: 'openrouter', apiKey: 'sk-test', model: 'some/model' });
+      });
+      await test('settings: blank model falls back to provider default', () => {
+        const st = memStorage();
+        S.saveSettings({ provider: 'gemini', apiKey: 'k', model: '' }, st);
+        assertEq(S.loadSettings(st).model, GM);
+      });
+      await test('settings: providers keep separate keys, last saved is active', () => {
+        const st = memStorage();
+        S.saveSettings({ provider: 'openrouter', apiKey: 'or-key', model: 'a/b:free' }, st);
+        S.saveSettings({ provider: 'gemini', apiKey: 'gm-key', model: 'gemini-x' }, st);
+        const s = S.loadSettings(st);
+        assertEq(pick(s), { provider: 'gemini', apiKey: 'gm-key', model: 'gemini-x' });
+        assertEq(s.providers.openrouter, { apiKey: 'or-key', model: 'a/b:free' });
+      });
+      await test('settings: clear(provider) only clears that provider', () => {
+        const st = memStorage();
+        S.saveSettings({ provider: 'openrouter', apiKey: 'or-key' }, st);
+        S.saveSettings({ provider: 'gemini', apiKey: 'gm-key' }, st);
+        S.clearSettings('gemini', st);
+        const s = S.loadSettings(st);
+        assertEq([s.providers.gemini.apiKey, s.providers.openrouter.apiKey], ['', 'or-key']);
+      });
+      await test('settings: clear() removes everything', () => {
+        const st = memStorage();
+        S.saveSettings({ provider: 'gemini', apiKey: 'k' }, st); S.clearSettings(undefined, st);
+        assertEq(pick(S.loadSettings(st)), { provider: 'openrouter', apiKey: '', model: OR });
+      });
+      await test('settings: old {apiKey, model} format read as OpenRouter', () => {
+        const st = memStorage(); st.setItem(S.SETTINGS_KEY, JSON.stringify({ apiKey: 'old', model: 'old/model:free' }));
+        assertEq(pick(S.loadSettings(st)), { provider: 'openrouter', apiKey: 'old', model: 'old/model:free' });
+      });
+      await test('settings: corrupt JSON -> defaults', () => {
+        const st = memStorage(); st.setItem(S.SETTINGS_KEY, '{bad');
+        assertEq(pick(S.loadSettings(st)), { provider: 'openrouter', apiKey: '', model: OR });
+      });
+      await test('settings: default store never writes localStorage', () => {
+        const before = localStorage.getItem(S.SETTINGS_KEY);
+        S.saveSettings({ provider: 'gemini', apiKey: 'AIza-mem-only', model: 'gemini-x' });
+        assertEq(S.loadSettings().apiKey, 'AIza-mem-only');
+        assertEq(localStorage.getItem(S.SETTINGS_KEY), before);
+        const dump = JSON.stringify({ ...localStorage });
+        assert(!dump.includes('AIza-mem-only'), 'key found in localStorage');
+        S.clearSettings();
+        assertEq(S.loadSettings().apiKey, '');
+      });
+      await test('settings: purgeStoredSettings removes old saved key', () => {
+        const st = memStorage(); st.setItem(S.SETTINGS_KEY, JSON.stringify({ apiKey: 'old' }));
+        S.purgeStoredSettings(st);
+        assertEq(st.getItem(S.SETTINGS_KEY), null);
+      });
+      await test('settings: unknown provider -> default provider', () => {
+        const st = memStorage(); st.setItem(S.SETTINGS_KEY, JSON.stringify({ provider: 'nope', providers: {} }));
+        assertEq(S.loadSettings(st).provider, 'openrouter');
+      });
+
+      // ---------- image sizing ----------
+      await test('fitSize: landscape scaled to 1024', () => assertEq(S.fitSize(3000, 2000, 1024), { width: 1024, height: 683 }));
+      await test('fitSize: portrait scaled to 1024', () => assertEq(S.fitSize(2000, 4000, 1024), { width: 512, height: 1024 }));
+      await test('fitSize: small image not upscaled', () => assertEq(S.fitSize(800, 600, 1024), { width: 800, height: 600 }));
+      await test('compressImage: 3000x2000 blob -> JPEG max side 1024', async () => {
+        const c = document.createElement('canvas'); c.width = 3000; c.height = 2000;
+        const ctx = c.getContext('2d'); ctx.fillStyle = '#10b981'; ctx.fillRect(0, 0, 3000, 2000);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        const url = await S.compressImage(blob, 1024);
+        assert(url.startsWith('data:image/jpeg'), 'should be JPEG');
+        const img = new Image();
+        await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+        assertEq([img.naturalWidth, img.naturalHeight], [1024, 683]);
+      });
+      await test('compressImage: non-image rejects', async () => {
+        let threw = false;
+        try { await S.compressImage(new Blob(['not an image'], { type: 'text/plain' })); } catch (e) { threw = true; }
+        assert(threw, 'should reject');
+      });
+
+      // ---------- recognizeImage (fetch mocked, no network) ----------
+      const A = window.ScanApi;
+      const settings = { apiKey: 'sk-test', model: 'test/model' };
+      async function expectCode(promise, code) {
+        try { await promise; } catch (e) { assertEq(e.code, code); return e; }
+        throw new Error('expected error ' + code);
+      }
+
+      await test('recognizeImage: request shape', async () => {
+        const cap = {};
+        const r = await A.recognizeImage('data:image/jpeg;base64,AAA', settings, fakeFetch(200, chat('["Milk"]'), cap));
+        assertEq(r.names, ['Milk']);
+        assertEq(cap.url, A.ENDPOINT);
+        assertEq(cap.opts.method, 'POST');
+        assertEq(cap.opts.headers.Authorization, 'Bearer sk-test');
+        const body = JSON.parse(cap.opts.body);
+        assertEq(body.model, 'test/model');
+        assertEq(body.messages[0].content[1], { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAA' } });
+        assertEq(body.messages[0].content[0].text, S.PHOTO_PROMPT);
+      });
+      await test('recognizeImage: parses fenced content', async () => {
+        const r = await A.recognizeImage('d', settings, fakeFetch(200, chat('```json\n["Eggs","Arla Milk"]\n```')));
+        assertEq(r.names, ['Eggs', 'Arla Milk']);
+      });
+      await test('recognizeImage: no key -> no-key (no request sent)', async () => {
+        let called = false;
+        await expectCode(A.recognizeImage('d', { apiKey: '' }, async () => { called = true; }), 'no-key');
+        assert(!called, 'fetch should not be called');
+      });
+      await test('recognizeImage: 401 -> auth', () => expectCode(A.recognizeImage('d', settings, fakeFetch(401, '{"error":"bad key"}')), 'auth'));
+      await test('recognizeImage: 402 -> credits', () => expectCode(A.recognizeImage('d', settings, fakeFetch(402, '{"error":{"code":402}}')), 'credits'));
+      await test('recognizeImage: 429 -> quota', () => expectCode(A.recognizeImage('d', settings, fakeFetch(429, '{}')), 'quota'));
+      await test('recognizeImage: 404 no image support -> no-vision', () => expectCode(A.recognizeImage('d', settings, fakeFetch(404, '{"error":{"message":"No endpoints found that support image input","code":404}}')), 'no-vision'));
+      await test('recognizeImage: 404 -> http with raw kept', async () => {
+        const e = await expectCode(A.recognizeImage('d', settings, fakeFetch(404, 'model not found')), 'http');
+        assertEq(e.raw, 'model not found');
+      });
+      await test('recognizeImage: fetch throws -> network', () => expectCode(A.recognizeImage('d', settings, async () => { throw new TypeError('Failed to fetch'); }), 'network'));
+      await test('recognizeImage: abort -> timeout', () => expectCode(A.recognizeImage('d', settings, async () => { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }), 'timeout'));
+      await test('recognizeImage: [] -> empty', () => expectCode(A.recognizeImage('d', settings, fakeFetch(200, chat('[]'))), 'empty'));
+      await test('recognizeImage: non-JSON body -> empty', () => expectCode(A.recognizeImage('d', settings, fakeFetch(200, '<html>oops</html>')), 'empty'));
+
+      // ---------- recognizeImage: Gemini ----------
+      const gSettings = { provider: 'gemini', apiKey: 'AIza-test', model: 'gemini-test' };
+      const gResp = text => ({ candidates: [{ content: { parts: [{ text }] } }] });
+      await test('gemini: request shape', async () => {
+        const cap = {};
+        const r = await A.recognizeImage('data:image/jpeg;base64,QUJD', gSettings, fakeFetch(200, gResp('["Eggs"]'), cap));
+        assertEq(r.names, ['Eggs']);
+        assertEq(cap.url, A.GEMINI_BASE + 'gemini-test:generateContent');
+        assertEq(cap.opts.headers['x-goog-api-key'], 'AIza-test');
+        assert(!cap.opts.headers.Authorization, 'no Bearer header for Gemini');
+        const body = JSON.parse(cap.opts.body);
+        assertEq(body.contents[0].parts[0].text, S.PHOTO_PROMPT);
+        assertEq(body.contents[0].parts[1], { inline_data: { mime_type: 'image/jpeg', data: 'QUJD' } });
+        assertEq(body.generationConfig.responseMimeType, 'application/json');
+      });
+      await test('gemini: "models/" prefix stripped', async () => {
+        const cap = {};
+        await A.recognizeImage('data:image/jpeg;base64,A', { ...gSettings, model: 'models/gemini-x' }, fakeFetch(200, gResp('["A"]'), cap));
+        assertEq(cap.url, A.GEMINI_BASE + 'gemini-x:generateContent');
+      });
+      await test('gemini: joins text parts, skips thought parts', async () => {
+        const body = { candidates: [{ content: { parts: [{ text: 'thinking...', thought: true }, { text: '["Milk",' }, { text: '"Eggs"]' }] } }] };
+        const r = await A.recognizeImage('data:image/jpeg;base64,A', gSettings, fakeFetch(200, body));
+        assertEq(r.names, ['Milk', 'Eggs']);
+      });
+      await test('gemini: no key -> no-key mentions Gemini', async () => {
+        const e = await expectCode(A.recognizeImage('d', { provider: 'gemini', apiKey: '' }, async () => {}), 'no-key');
+        assert(e.message.includes('Gemini'), e.message);
+      });
+      await test('gemini: 400 API_KEY_INVALID -> auth', () => expectCode(A.recognizeImage('data:image/jpeg;base64,A', gSettings,
+        fakeFetch(400, { error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT' } })), 'auth'));
+      await test('gemini: 429 -> quota', () => expectCode(A.recognizeImage('data:image/jpeg;base64,A', gSettings,
+        fakeFetch(429, { error: { code: 429, status: 'RESOURCE_EXHAUSTED' } })), 'quota'));
+      await test('gemini: 404 -> http (model not found)', async () => {
+        const e = await expectCode(A.recognizeImage('data:image/jpeg;base64,A', gSettings, fakeFetch(404, { error: { code: 404, status: 'NOT_FOUND' } })), 'http');
+        assert(e.message.includes('model not found'), e.message);
+      });
+      // ---------- model ID check + listModels ----------
+      await test('checkModelId: display name with spaces rejected', () => assert(A.checkModelId('Gemini 4 Hydrogen').includes('display name')));
+      await test('checkModelId: valid IDs accepted', () => {
+        assertEq(A.checkModelId('gemini-2.5-flash'), '');
+        assertEq(A.checkModelId('google/gemma-4-31b-it:free'), '');
+        assertEq(A.checkModelId('  models/gemini-x '), '');
+        assertEq(A.checkModelId(''), '');
+      });
+      await test('recognizeImage: display name -> bad-model, no request sent', async () => {
+        let called = false;
+        await expectCode(A.recognizeImage('d', { ...gSettings, model: 'Gemini 4 Hydrogen' }, async () => { called = true; }), 'bad-model');
+        assert(!called, 'fetch should not be called');
+      });
+      await test('gemini: 400 "unexpected model name format" -> bad-model', () => expectCode(A.recognizeImage('data:image/jpeg;base64,A', gSettings,
+        fakeFetch(400, { error: { code: 400, message: '* GenerateContentRequest.model: unexpected model name format\n', status: 'INVALID_ARGUMENT' } })), 'bad-model'));
+      await test('listModels gemini: filters to generateContent, strips models/, sends key header', async () => {
+        const cap = {};
+        const r = await A.listModels('gemini', 'AIza-test', fakeFetch(200, { models: [
+          { name: 'models/gemini-x-flash', displayName: 'Gemini X Flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+          { name: 'models/text-embedding-004', displayName: 'Embedding', supportedGenerationMethods: ['embedContent'] },
+          { name: 'models/gemini-x-flash-preview-tts', displayName: 'TTS', supportedGenerationMethods: ['generateContent'] },
+          { name: 'models/imagen-4', displayName: 'Imagen', supportedGenerationMethods: ['predict'] }
+        ] }, cap));
+        assertEq(r, [{ id: 'gemini-x-flash', label: 'Gemini X Flash (gemini-x-flash)' }]);
+        assertEq(cap.opts.headers['x-goog-api-key'], 'AIza-test');
+        assert(cap.url.startsWith(A.GEMINI_BASE.replace(/\/$/, '')), cap.url);
+      });
+      await test('listModels gemini: no key -> no-key', () => expectCode(A.listModels('gemini', '', async () => {}), 'no-key'));
+      await test('listModels gemini: bad key -> auth', () => expectCode(A.listModels('gemini', 'bad',
+        fakeFetch(400, { error: { message: 'API key not valid. Please pass a valid API key.' } })), 'auth'));
+      await test('listModels openrouter: only free + image input + text output', async () => {
+        const r = await A.listModels('openrouter', '', fakeFetch(200, { data: [
+          { id: 'a/vision:free', name: 'Vision', architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] } },
+          { id: 'a/vision-paid', name: 'Paid', architecture: { input_modalities: ['image'], output_modalities: ['text'] } },
+          { id: 'a/text:free', name: 'Text', architecture: { input_modalities: ['text'], output_modalities: ['text'] } },
+          { id: 'a/draw:free', name: 'Draw', architecture: { input_modalities: ['text'], output_modalities: ['image'] } }
+        ] }));
+        assertEq(r, [{ id: 'a/vision:free', label: 'Vision (a/vision:free)' }]);
+      });
+
+      await test('gemini: blocked / no candidates -> empty', () => expectCode(A.recognizeImage('data:image/jpeg;base64,A', gSettings,
+        fakeFetch(200, { promptFeedback: { blockReason: 'SAFETY' } })), 'empty'));
+
+      // ---------- render ----------
+      const failed = results.filter(r => !r.ok).length;
+      document.getElementById('summary').textContent = `${results.length - failed}/${results.length} passed`;
+      document.getElementById('summary').className = 'mb-4 font-bold ' + (failed ? 'text-red-400' : 'text-emerald-400');
+      document.getElementById('results').innerHTML = results.map(r =>
+        `<li class="${r.ok ? 'text-emerald-400' : 'text-red-400'}">${r.ok ? '✔' : '✘'} ${r.name.replace(/</g, '&lt;')}${r.ok ? '' : ' — ' + r.msg.replace(/</g, '&lt;')}</li>`
+      ).join('');
+      document.title = failed ? `FAIL (${failed})` : 'PASS';
+      window.__SCAN_TEST_RESULT__ = { total: results.length, failed, results };
+    })();
+  </script>
+</body>
+</html>
