@@ -7,19 +7,9 @@ lucide.createIcons();
 const dateFormat = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
 document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-US', dateFormat);
 
-// Scan: opens the standalone page in scan/ (old scan-modal below is kept but no longer opened)
-const scanModal = document.getElementById('scan-modal');
+// Scan: opens the standalone page in scan/
 document.getElementById('open-scan').addEventListener('click', () => {
   location.href = 'scan/scan.html';
-});
-document.getElementById('close-scan').addEventListener('click', () => {
-  scanModal.classList.add('hidden');
-  scanModal.classList.remove('flex');
-});
-document.getElementById('finish-scan').addEventListener('click', () => {
-  scanModal.classList.add('hidden');
-  scanModal.classList.remove('flex');
-  selectCategory('all');
 });
 
 // Import items handed over by scan/scan.html (stored under a temporary key, then removed).

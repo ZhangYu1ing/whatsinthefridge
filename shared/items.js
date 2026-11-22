@@ -3,7 +3,8 @@
 (function (global) {
   'use strict';
 
-  const ZONES = ['chilled', 'pantry', 'freezer', 'outside'];
+  const ZONE_NAMES = { chilled: 'Cold Store', pantry: 'Pantry', freezer: 'Freezer', outside: 'Outside Fridge' };
+  const ZONES = Object.keys(ZONE_NAMES);
   const DEFAULT_IMG = 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop';
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const SOON_DAYS = 3;
@@ -71,7 +72,7 @@
   }
 
   global.Items = {
-    ZONES, DEFAULT_IMG, MONTH_NAMES, SOON_DAYS,
+    ZONES, ZONE_NAMES, DEFAULT_IMG, MONTH_NAMES, SOON_DAYS,
     normalizeExpiry, formatExpiry, daysUntilExpiry, sortByExpiry,
     normalizeItem, isValidItem
   };

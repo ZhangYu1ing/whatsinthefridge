@@ -136,3 +136,33 @@ def test_scan_handoff_imports_items_once(app):
     app.reload()
     app.open_all_storage()
     expect(app.card("Scanned Milk")).to_have_count(1)
+
+
+def test_scan_page_review_and_submit(app):
+    page = app.page
+    page.goto(f"{app.base_url}/scan/scan.html")
+
+    # Recognition needs an API key, so add the row the way a recognition result would.
+    page.evaluate("appendRows(['Scanned Eggs'])")
+    row = page.locator(".scan-row")
+    expect(row).to_have_count(1)
+    expect(row.locator("[data-f='zone'] option")).to_have_text(
+        ["Zone…", "Cold Store", "Pantry", "Freezer", "Outside Fridge"]
+    )
+
+    # A zone is required before the items can be submitted.
+    expect(page.locator("#submit-btn")).to_be_disabled()
+    row.locator("[data-f='zone']").select_option("freezer")
+    row.locator("[data-f='qty']").fill("4")
+    expect(page.locator("#submit-btn")).to_be_enabled()
+    page.click("#submit-btn")
+
+    # Submitting returns to the home page, which shows the new item.
+    page.wait_for_url("**/index.html")
+    app.wait_until_ready()
+    expect(page.locator("#inventory-modal")).to_be_visible()
+    card = app.card("Scanned Eggs")
+    expect(card).to_have_count(1)
+    expect(card).to_contain_text("x4")
+    expect(card).to_contain_text("freezer")
+    expect(card).to_contain_text("No expiry set")

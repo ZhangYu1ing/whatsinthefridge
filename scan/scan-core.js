@@ -3,8 +3,8 @@
 (function (global) {
   'use strict';
 
-  // Must match the zones used by index.html.
-  const ZONES = ['chilled', 'pantry', 'freezer', 'outside'];
+  // Zones and the default image come from shared/items.js, which must be loaded before this file.
+  const ZONES = global.Items.ZONES;
 
   const SETTINGS_KEY = 'whatsinthefridge.scan.settings.v1';
   const PENDING_KEY = 'whatsinthefridge.scan.pending.v1';
@@ -31,7 +31,7 @@
   const DEFAULT_PROVIDER = 'openrouter';
   const DEFAULT_MODEL = PROVIDERS.openrouter.defaultModel;
 
-  const DEFAULT_IMG = 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop';
+  const DEFAULT_IMG = global.Items.DEFAULT_IMG;
 
   const PHOTO_PROMPT = [
     'You are looking at a photo of groceries or the inside of a fridge.',
@@ -100,7 +100,7 @@
         zone,
         category,
         qty: isNaN(qty) || qty < 1 ? 1 : qty,
-        expiry: 'No expiry set',
+        expiry: null,
         img: DEFAULT_IMG
       });
     });

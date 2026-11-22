@@ -125,6 +125,7 @@
     </details>
   </main>
 
+  <script src="../shared/items.js"></script>
   <script src="scan-core.js"></script>
   <script src="scan-api.js"></script>
   <script>
@@ -132,7 +133,7 @@
     const S = window.ScanCore;
     const $ = id => document.getElementById(id);
 
-    const ZONE_LABELS = { chilled: 'Cold Store', pantry: 'Pantry', freezer: 'Freezer', outside: 'Outside Fridge' };
+    const ZONE_LABELS = Items.ZONE_NAMES;
 
     // --- Navigation ---
     function goHome() {

@@ -30,7 +30,7 @@ test/             automated tests
 Scripts are plain `<script src>` files sharing the global scope, so the order in `index.html` matters. `home/` and `scan/` may use `shared/`, but `shared/` must not use them and the two pages only talk through the stored data.
 
 ## Tests
-Automated browser tests (pytest + Playwright) live in `test/`. They cover the sample data and expiry alert, add/edit/delete surviving a refresh, the scan hand-off, and the existing `scan/tests.html` unit tests. The pages are served from a temporary local server and the date is fixed to 2026-11-22.
+Automated browser tests (pytest + Playwright) live in `test/`. They cover the sample data and expiry alert, add/edit/delete surviving a refresh, the scan page and its hand-off to the home page, and the existing `scan/tests.html` unit tests. The pages are served from a temporary local server and the date is fixed to 2026-11-22.
 
 ```
 python -m venv .venv

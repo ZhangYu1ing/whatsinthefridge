@@ -3,12 +3,12 @@
 // Set once the Expiring Soon card has scrolled into view; groups rendered afterwards appear immediately.
 let expiryRevealed = false;
 
-// Zones in display order, with the same icon and color as the drawer menu.
+// Icon and color per zone, in display order (names come from Items.ZONE_NAMES).
 const ZONE_META = {
-  chilled: { name: 'Cold Store', icon: 'thermometer-snowflake', cls: 'text-sky-400' },
-  pantry: { name: 'Pantry', icon: 'package', cls: 'text-amber-400' },
-  freezer: { name: 'Freezer', icon: 'snowflake', cls: 'text-indigo-400' },
-  outside: { name: 'Outside Fridge', icon: 'archive', cls: 'text-amber-500' }
+  chilled: { icon: 'thermometer-snowflake', cls: 'text-sky-400' },
+  pantry: { icon: 'package', cls: 'text-amber-400' },
+  freezer: { icon: 'snowflake', cls: 'text-indigo-400' },
+  outside: { icon: 'archive', cls: 'text-amber-500' }
 };
 
 // Update the home-page Expiring Soon window (expired items and those due within Items.SOON_DAYS).
@@ -50,7 +50,7 @@ function updateExpiryAlert() {
         <div class="${expiryRevealed ? '' : 'opacity-0 translate-y-6'} transition-all duration-500 ease-out" style="transition-delay: ${200 + i * 150}ms">
           <div class="flex items-center space-x-2 mb-3">
             <i data-lucide="${meta.icon}" class="w-5 h-5 ${meta.cls}"></i>
-            <h3 class="text-base font-bold text-white">${meta.name}</h3>
+            <h3 class="text-base font-bold text-white">${Items.ZONE_NAMES[zone]}</h3>
           </div>
           <ul class="space-y-2.5">${rows}</ul>
         </div>`;

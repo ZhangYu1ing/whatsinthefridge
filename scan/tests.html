@@ -11,6 +11,7 @@
   <p id="summary" class="mb-4 font-bold"></p>
   <ul id="results" class="space-y-1"></ul>
 
+  <script src="../shared/items.js"></script>
   <script src="scan-core.js"></script>
   <script src="scan-api.js"></script>
   <script>
@@ -67,7 +68,7 @@
       await test('buildPendingItems: valid row gets defaults', () => {
         const r = S.buildPendingItems([{ name: ' Milk ', zone: 'chilled', qty: '', category: '' }]);
         assert(r.ok, 'should be ok');
-        assertEq(r.items, [{ name: 'Milk', zone: 'chilled', category: '', qty: 1, expiry: 'No expiry set', img: S.DEFAULT_IMG }]);
+        assertEq(r.items, [{ name: 'Milk', zone: 'chilled', category: '', qty: 1, expiry: null, img: S.DEFAULT_IMG }]);
       });
       await test('buildPendingItems: keeps qty and category', () => {
         const r = S.buildPendingItems([{ name: 'Eggs', zone: 'pantry', qty: '6', category: 'Dairy' }]);

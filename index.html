@@ -368,33 +368,6 @@
     </div>
   </div>
 
-  <!-- SIMULATED CAMERA SCAN MODAL -->
-  <div id="scan-modal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex-col items-center justify-center p-6">
-    <div class="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-3xl p-6 relative space-y-6">
-      <button id="close-scan" class="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white">
-        <i data-lucide="x" class="w-5 h-5"></i>
-      </button>
-
-      <div class="text-center space-y-2">
-        <h3 class="text-xl font-bold text-white">AI Real-Food Scanner</h3>
-        <p class="text-xs text-zinc-400">Capturing items for Yuling & Ruobing's fridge</p>
-      </div>
-
-      <!-- Camera Viewport Simulation -->
-      <div class="relative w-full h-64 bg-zinc-950 rounded-2xl overflow-hidden flex items-center justify-center border border-zinc-800">
-        <img src="https://images.unsplash.com/photo-1540420773420-3366772f4999?q=80&w=600&auto=format&fit=crop" class="w-full h-full object-cover opacity-80" />
-        <!-- Scanner Bounding Box -->
-        <div class="absolute inset-8 border-2 border-dashed border-emerald-400 rounded-xl flex items-center justify-center bg-emerald-500/10 animate-pulse">
-          <span class="bg-emerald-500 text-black text-xs font-bold px-3 py-1 rounded-full shadow">Detecting Groceries...</span>
-        </div>
-      </div>
-
-      <button id="finish-scan" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition-all">
-        Add Identified Items
-      </button>
-    </div>
-  </div>
-
   <!-- Shared modules (order matters: items.js before storage.js) -->
   <script src="shared/items.js"></script>
   <script src="shared/storage.js"></script>
