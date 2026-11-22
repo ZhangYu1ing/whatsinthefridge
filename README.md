@@ -11,23 +11,7 @@ A mobile-first, single-file web prototype for tracking the food in your fridge a
 Open `index.html` in a browser. No build or dependencies required.
 
 ## Project structure
-```
-index.html        home page markup; loads the scripts below in this order
-shared/           used by every page, never depends on a page
-  items.js          zones, item defaults, expiry rules
-  storage.js        the only code that reads/writes items (async)
-home/             scripts of the home page
-  common.js         inventoryData, tryStore, escapeHtml, expiryStatus
-  drawer.js         slide-out zone menu
-  expiry-alert.js   "Expiring Soon" section and its animation
-  inventory.js      zone views and item cards
-  expiry-picker.js  year/month/day selectors
-  item-modals.js    add and edit dialogs
-  main.js           startup (loaded last)
-scan/             the scan page (own HTML, scripts and tests)
-test/             automated tests
-```
-Scripts are plain `<script src>` files sharing the global scope, so the order in `index.html` matters. `home/` and `scan/` may use `shared/`, but `shared/` must not use them and the two pages only talk through the stored data.
+The code is split into `shared/` (item rules and storage), `home/` (home page) and `scan/` (scan page). See [doc/projectStruct.md](doc/projectStruct.md) for the layout, dependency rules and script load order.
 
 ## Tests
 Automated browser tests (pytest + Playwright) live in `test/`. They cover the sample data and expiry alert, add/edit/delete surviving a refresh, the scan page and its hand-off to the home page, and the existing `scan/tests.html` unit tests. The pages are served from a temporary local server and the date is fixed to 2026-11-22.
