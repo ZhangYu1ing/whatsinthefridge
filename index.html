@@ -122,6 +122,9 @@
     <!-- Dark Vignette and Gradient Overlay for Optimal Contrast -->
     <div class="absolute inset-0 -z-10 bg-gradient-to-t from-zinc-950 via-black/50 to-black/60"></div>
 
+    <!-- Long fade so the image dissolves into the Expiring Soon section below (same zinc-950) -->
+    <div class="absolute inset-x-0 bottom-0 h-64 -z-10 bg-gradient-to-b from-transparent to-zinc-950"></div>
+
     <!-- Hero Content Box -->
     <div class="max-w-3xl mx-auto space-y-6 pt-16">
       <!-- Dynamic Date Badge -->
@@ -135,14 +138,22 @@
         THIS IS YULING AND RUOBING'S FRIDGE
       </h1>
     </div>
-
-    <!-- Scroll Down Hint -> Contact Us -->
-    <button onclick="document.getElementById('contact').scrollIntoView({ behavior: 'smooth' })"
-      class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center space-y-1 text-zinc-300 hover:text-emerald-400 transition-colors animate-bounce">
-      <span class="text-xs font-semibold uppercase tracking-widest">Contact Us</span>
-      <i data-lucide="chevron-down" class="w-6 h-6"></i>
-    </button>
   </main>
+
+  <!-- EXPIRING SOON SECTION (between hero and Contact Us; hidden when nothing is expiring) -->
+  <section id="expiry-panel" class="hidden w-full bg-zinc-950 px-6 py-12">
+    <div id="expiry-card" class="max-w-5xl mx-auto text-left bg-zinc-900 border border-zinc-800 rounded-3xl p-6 shadow-2xl opacity-0 translate-y-8 transition-all duration-700 ease-out">
+      <div class="flex items-center justify-between mb-5">
+        <div class="flex items-center space-x-3">
+          <i data-lucide="alarm-clock" class="w-6 h-6 text-amber-300"></i>
+          <h2 class="text-lg font-bold text-white">Expiring Soon</h2>
+          <span id="expiry-summary" class="text-sm text-zinc-400"></span>
+        </div>
+        <button onclick="selectCategory('all')" class="text-sm font-semibold text-emerald-400 hover:text-emerald-300">View all</button>
+      </div>
+      <div id="expiry-groups" class="grid grid-cols-1 gap-y-6"></div>
+    </div>
+  </section>
 
   <!-- CONTACT US SECTION (Scroll down to reveal) -->
   <section id="contact" class="relative w-full bg-white px-6 py-20">
@@ -552,6 +563,7 @@
     // Re-render the current view (used after an edit/move)
     function refreshCurrentView() {
       selectCategory(currentZone);
+      updateExpiryAlert();
     }
 
     // Escape user-provided text before inserting it into innerHTML.
@@ -569,8 +581,92 @@
       return 'No expiry set';
     }
 
+    // Days from today until expiry (negative = already expired); null if there is no valid date.
+    // A month-only value counts as the last day of that month.
+    function daysUntilExpiry(value) {
+      const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(value ?? '');
+      if (!m) return null;
+      const y = Number(m[1]);
+      const mo = Number(m[2]);
+      const d = m[3] ? Number(m[3]) : new Date(y, mo, 0).getDate();
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.round((new Date(y, mo - 1, d) - today) / 86400000);
+    }
+
+    const SOON_DAYS = 3;
+
+    // Text color and short label for an item's expiry status.
+    function expiryStatus(value) {
+      const days = daysUntilExpiry(value);
+      if (days === null) return { cls: 'text-zinc-500', label: '' };
+      if (days < 0) return { cls: 'text-red-400', label: 'Expired' };
+      if (days === 0) return { cls: 'text-amber-400', label: 'Today' };
+      if (days <= SOON_DAYS) return { cls: 'text-amber-400', label: `${days} day${days > 1 ? 's' : ''} left` };
+      return { cls: 'text-emerald-400', label: '' };
+    }
+
+    // Set once the Expiring Soon card has scrolled into view; groups rendered afterwards appear immediately.
+    let expiryRevealed = false;
+
+    // Zones in display order, with the same icon and color as the drawer menu.
+    const ZONE_META = {
+      chilled: { name: 'Cold Store', icon: 'thermometer-snowflake', cls: 'text-sky-400' },
+      pantry: { name: 'Pantry', icon: 'package', cls: 'text-amber-400' },
+      freezer: { name: 'Freezer', icon: 'snowflake', cls: 'text-indigo-400' },
+      outside: { name: 'Outside Fridge', icon: 'archive', cls: 'text-amber-500' }
+    };
+
+    // Update the home-page Expiring Soon window (expired items and those due within SOON_DAYS).
+    function updateExpiryAlert() {
+      let expired = 0;
+      let soon = 0;
+      const byZone = {};
+      inventoryData.forEach(item => {
+        const days = daysUntilExpiry(item.expiry);
+        if (days === null || days > SOON_DAYS) return;
+        (byZone[item.zone] ??= []).push(item);
+        if (days < 0) expired++;
+        else soon++;
+      });
+
+      const parts = [];
+      if (expired) parts.push(`${expired} expired`);
+      if (soon) parts.push(`${soon} expiring soon`);
+      document.getElementById('expiry-panel').classList.toggle('hidden', parts.length === 0);
+      document.getElementById('expiry-summary').textContent = parts.join(' · ');
+
+      document.getElementById('expiry-groups').innerHTML = Object.keys(ZONE_META)
+        .filter(zone => byZone[zone])
+        .map((zone, i) => {
+          const meta = ZONE_META[zone];
+          const rows = sortByExpiry(byZone[zone]).map(item => {
+            const s = expiryStatus(item.expiry);
+            return `
+              <li class="flex items-center justify-between gap-3 text-base">
+                <div class="flex items-center gap-3 min-w-0">
+                  <img src="${escapeHtml(item.img)}" alt="" class="w-10 h-10 rounded-xl object-cover shrink-0">
+                  <span class="text-zinc-100 truncate">${escapeHtml(item.name)}</span>
+                  <span class="text-sm text-zinc-500">x${escapeHtml(item.qty ?? 1)}</span>
+                </div>
+                <span class="${s.cls} text-sm font-semibold whitespace-nowrap">${escapeHtml(s.label)}</span>
+              </li>`;
+          }).join('');
+          return `
+            <div class="${expiryRevealed ? '' : 'opacity-0 translate-y-6'} transition-all duration-500 ease-out" style="transition-delay: ${200 + i * 150}ms">
+              <div class="flex items-center space-x-2 mb-3">
+                <i data-lucide="${meta.icon}" class="w-5 h-5 ${meta.cls}"></i>
+                <h3 class="text-base font-bold text-white">${meta.name}</h3>
+              </div>
+              <ul class="space-y-2.5">${rows}</ul>
+            </div>`;
+        }).join('');
+      lucide.createIcons();
+    }
+
     // Build a single item card. `editable` controls qty badge + edit button.
     function itemCard(item, editable) {
+      const status = expiryStatus(item.expiry);
       return `
         <div class="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-700 transition-all">
           <div class="h-44 w-full bg-zinc-950 relative overflow-hidden">
@@ -585,7 +681,7 @@
           </div>
           <div class="p-4 space-y-2">
             <h4 class="font-semibold text-white">${escapeHtml(item.name)}</h4>
-            <p class="text-xs text-emerald-400 font-medium">${escapeHtml(formatExpiry(item.expiry))}</p>
+            <p class="text-xs ${status.cls} font-medium">${escapeHtml(formatExpiry(item.expiry) + (status.label ? ' · ' + status.label : ''))}</p>
             ${editable ? `
             <button onclick="openEditItem(${item.id})" class="w-full mt-2 flex items-center justify-center space-x-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold rounded-lg transition-all">
               <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
@@ -596,14 +692,23 @@
       `;
     }
 
+    // Soonest expiry first, items without an expiry last. ISO date strings sort correctly as text.
+    function sortByExpiry(items) {
+      return [...items].sort((a, b) => {
+        if (!a.expiry) return b.expiry ? 1 : 0;
+        if (!b.expiry) return -1;
+        return a.expiry.localeCompare(b.expiry);
+      });
+    }
+
     function renderGrid(items) {
-      inventoryGrid.innerHTML = items.map(item => itemCard(item, true)).join('');
+      inventoryGrid.innerHTML = sortByExpiry(items).map(item => itemCard(item, true)).join('');
       lucide.createIcons();
     }
 
     // Render a shelf inside the Cold Store two-shelf layout (always editable)
     function renderShelf(container, emptyId, items) {
-      container.innerHTML = items.map(item => itemCard(item, true)).join('');
+      container.innerHTML = sortByExpiry(items).map(item => itemCard(item, true)).join('');
       document.getElementById(emptyId).classList.toggle('hidden', items.length !== 0);
     }
 
@@ -816,6 +921,7 @@
 
       closeAddItem();
       selectCategory('all');
+      updateExpiryAlert();
     });
 
     // Edit / Move Item Logic
@@ -871,6 +977,23 @@
       closeEditItem();
       refreshCurrentView();
     });
+
+    // Fade and slide the Expiring Soon card in the first time it scrolls into view,
+    // then bring in each zone group one after another (delays are set in updateExpiryAlert).
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.remove('opacity-0', 'translate-y-8');
+        expiryRevealed = true;
+        document.querySelectorAll('#expiry-groups > div').forEach(group => {
+          group.classList.remove('opacity-0', 'translate-y-6');
+        });
+        revealObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.15 });
+    revealObserver.observe(document.getElementById('expiry-card'));
+
+    updateExpiryAlert();
 
     // After returning from scan/scan.html with new items, show them.
     if (importedFromScan) selectCategory('all');
