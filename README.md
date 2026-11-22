@@ -28,9 +28,10 @@ All scan code lives in `scan/`. `index.html` only links to it and imports the re
 ## Data storage
 Items are persisted in the browser's `localStorage` under the key `whatsinthefridge.items.v1`.
 
-- **Data layer**: `loadItems()`, `saveItems()`, `addItem()` and `removeItem()` in `index.html`. UI code goes through these functions, so a backend (e.g. Supabase) can replace them later without UI changes.
-- **Seed data**: `seedItems` holds the sample items and is only used on first load or when storage is empty.
-- **Operations**: adding calls `addItem`, deleting calls `removeItem`, and saving an edit calls `saveItems`.
+- **Data layer**: `shared/storage.js` (`window.ItemStore`) is the only code that reads or writes items. Its functions are all async (`getAll`, `add`, `addMany`, `update`, `remove`), so a backend (e.g. Supabase) can replace the `localStorage` inside it without changing callers.
+- **Item rules**: `shared/items.js` (`window.Items`) holds the zones, item defaults and expiry helpers. Expiry is stored as `'YYYY-MM-DD'`, `'YYYY-MM'` or `null`; anything else is turned into `null` when an item is saved or loaded.
+- **Seed data**: `SEED_ITEMS` in `shared/storage.js` holds the sample items and is only used until the first change is saved.
+- **Errors**: `ItemStore` throws when a write fails (e.g. storage full); `index.html` catches this and shows an alert.
 - **Storage limit**: uploaded photos are stored as base64, so large or many photos can exceed the ~5MB browser quota. An alert is shown when saving fails.
 - **Scope**: data is per browser and per origin. `file://` and `http://127.0.0.1:5500` keep separate data, and nothing is synced between devices or people.
 

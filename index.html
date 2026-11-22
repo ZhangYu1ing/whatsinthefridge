@@ -395,6 +395,10 @@
     </div>
   </div>
 
+  <!-- Shared modules (order matters: items.js before storage.js) -->
+  <script src="shared/items.js"></script>
+  <script src="shared/storage.js"></script>
+
   <!-- JAVASCRIPT LOGIC -->
   <script>
     // Initialize Vector Icons
@@ -404,63 +408,33 @@
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-US', options);
 
-    // Sample Real-Food Data (No Cartoons, Crisp Photos)
-    const seedItems = [
-      { id: 1, name: 'Whole Organic Milk', zone: 'chilled', category: 'Dairy', qty: 2, expiry: '2026-11-30', img: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?q=80&w=400&auto=format&fit=crop' },
-      { id: 2, name: 'Fresh Avocados', zone: 'pantry', category: 'Produce', qty: 4, expiry: '2026-11-25', img: 'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?q=80&w=400&auto=format&fit=crop' },
-      { id: 3, name: 'Grass-Fed Ribeye Steak', zone: 'freezer', category: 'Meat', qty: 1, expiry: '2027-05', img: 'https://images.unsplash.com/photo-1603048588665-791ca8aea617?q=80&w=400&auto=format&fit=crop' },
-      { id: 4, name: 'Artisan Sourdough Bread', zone: 'outside', category: 'Pantry', qty: 1, expiry: '2026-11-24', img: 'https://images.unsplash.com/photo-1586444248902-2f64eddc13df?q=80&w=400&auto=format&fit=crop' },
-      { id: 5, name: 'Greek Yogurt (Plain)', zone: 'chilled', category: 'Dairy', qty: 3, expiry: '2026-12-05', img: 'https://images.unsplash.com/photo-1488477181946-6428a0291777?q=80&w=400&auto=format&fit=crop' },
-      { id: 6, name: 'Organic Cherry Tomatoes', zone: 'pantry', category: 'Produce', qty: 2, expiry: '2026-11-26', img: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?q=80&w=400&auto=format&fit=crop' }
-    ];
+    // Shared rules from shared/items.js.
+    const { MONTH_NAMES, SOON_DAYS, daysUntilExpiry, formatExpiry, sortByExpiry } = Items;
 
-    // Data layer: all reads/writes of items go through these functions.
-    const STORAGE_KEY = 'whatsinthefridge.items.v1';
-    const EXPIRY_PATTERN = /^\d{4}-\d{2}(-\d{2})?$/;
+    // In-memory copy used for rendering; refreshed from ItemStore after every change.
+    let inventoryData = [];
 
-    function loadItems() {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          // Old free-text expiry values are dropped (set to null).
-          if (Array.isArray(parsed)) return parsed.map(i => EXPIRY_PATTERN.test(i.expiry) ? i : { ...i, expiry: null });
-        }
-      } catch (e) {
-        console.warn('Could not read saved items, using defaults.', e);
-      }
-      return seedItems.map(i => ({ ...i }));
+    async function reloadItems() {
+      inventoryData = await ItemStore.getAll();
     }
 
-    // Returns false when the browser refuses to store (e.g. quota exceeded by large photos).
-    function saveItems() {
+    // Runs a data-layer call; on failure (e.g. browser storage full) shows a message instead of breaking the UI.
+    async function tryStore(action) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(inventoryData));
+        await action();
         return true;
       } catch (e) {
-        alert('Could not save changes: browser storage is full or unavailable.');
+        console.error(e);
+        alert('Could not save changes: ' + e.message);
         return false;
       }
     }
 
-    function addItem(item) {
-      inventoryData.push(item);
-      saveItems();
-    }
-
-    function removeItem(id) {
-      const idx = inventoryData.findIndex(i => i.id === id);
-      if (idx !== -1) inventoryData.splice(idx, 1);
-      saveItems();
-    }
-
-    const inventoryData = loadItems();
-
     // Import items handed over by scan/scan.html (stored under a temporary key, then removed).
     const SCAN_PENDING_KEY = 'whatsinthefridge.scan.pending.v1';
-    const VALID_ZONES = ['chilled', 'pantry', 'freezer', 'outside'];
 
-    function importPendingScan() {
+    // Returns how many items were imported.
+    async function importPendingScan() {
       let pending;
       try {
         pending = JSON.parse(localStorage.getItem(SCAN_PENDING_KEY) || 'null');
@@ -470,26 +444,10 @@
       localStorage.removeItem(SCAN_PENDING_KEY); // remove first so a refresh never imports twice
       if (!Array.isArray(pending)) return 0;
 
-      let count = 0;
-      pending.forEach(p => {
-        if (!p || typeof p.name !== 'string' || !p.name.trim() || !VALID_ZONES.includes(p.zone)) return;
-        const qty = parseInt(p.qty, 10);
-        inventoryData.push({
-          id: inventoryData.length ? Math.max(...inventoryData.map(i => i.id)) + 1 : 1,
-          name: p.name.trim(),
-          zone: p.zone,
-          category: typeof p.category === 'string' ? p.category : '',
-          qty: isNaN(qty) || qty < 1 ? 1 : qty,
-          expiry: typeof p.expiry === 'string' && p.expiry ? p.expiry : 'No expiry set',
-          img: typeof p.img === 'string' && p.img ? p.img : 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'
-        });
-        count++;
-      });
-      if (count) saveItems();
-      return count;
+      let added = [];
+      await tryStore(async () => { added = await ItemStore.addMany(pending); });
+      return added.length;
     }
-
-    const importedFromScan = importPendingScan();
 
     // UI Drawer Elements
     const drawer = document.getElementById('drawer');
@@ -570,31 +528,6 @@
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
-
-    // Turn a stored expiry value ('YYYY-MM-DD', 'YYYY-MM' or null) into display text.
-    function formatExpiry(value) {
-      if (!value) return 'No expiry set';
-      let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-      if (m) return `Expiry: ${MONTH_NAMES[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
-      m = /^(\d{4})-(\d{2})$/.exec(value);
-      if (m) return `Expiry: ${MONTH_NAMES[Number(m[2]) - 1]} ${m[1]}`;
-      return 'No expiry set';
-    }
-
-    // Days from today until expiry (negative = already expired); null if there is no valid date.
-    // A month-only value counts as the last day of that month.
-    function daysUntilExpiry(value) {
-      const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(value ?? '');
-      if (!m) return null;
-      const y = Number(m[1]);
-      const mo = Number(m[2]);
-      const d = m[3] ? Number(m[3]) : new Date(y, mo, 0).getDate();
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return Math.round((new Date(y, mo - 1, d) - today) / 86400000);
-    }
-
-    const SOON_DAYS = 3;
 
     // Text color and short label for an item's expiry status.
     function expiryStatus(value) {
@@ -690,15 +623,6 @@
           </div>
         </div>
       `;
-    }
-
-    // Soonest expiry first, items without an expiry last. ISO date strings sort correctly as text.
-    function sortByExpiry(items) {
-      return [...items].sort((a, b) => {
-        if (!a.expiry) return b.expiry ? 1 : 0;
-        if (!b.expiry) return -1;
-        return a.expiry.localeCompare(b.expiry);
-      });
     }
 
     function renderGrid(items) {
@@ -800,7 +724,6 @@
     document.getElementById('close-add-item').addEventListener('click', closeAddItem);
 
     // --- Expiry picker (year / month / day, day optional), used by the add and edit modals ---
-    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const YEARS_AHEAD = 6;
 
     // `prefix` is 'add' or 'edit' and picks the matching element ids in the HTML.
@@ -897,7 +820,7 @@
     const addExpiry = createExpiryPicker('add');
     const editExpiry = createExpiryPicker('edit');
 
-    document.getElementById('save-add-item').addEventListener('click', () => {
+    document.getElementById('save-add-item').addEventListener('click', async () => {
       const name = document.getElementById('add-name').value.trim();
       const zone = document.getElementById('add-zone').value;
       const expiry = addExpiry.getValue();
@@ -908,17 +831,17 @@
         return;
       }
 
-      const newId = inventoryData.length ? Math.max(...inventoryData.map(i => i.id)) + 1 : 1;
-      addItem({
-        id: newId,
+      const saved = await tryStore(() => ItemStore.add({
         name,
         zone,
         category: '',
         qty: isNaN(qtyVal) || qtyVal < 1 ? 1 : qtyVal,
         expiry,
-        img: addImgData || 'https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=400&auto=format&fit=crop'
-      });
+        img: addImgData
+      }));
+      if (!saved) return;
 
+      await reloadItems();
       closeAddItem();
       selectCategory('all');
       updateExpiryAlert();
@@ -949,7 +872,7 @@
 
     document.getElementById('close-edit-item').addEventListener('click', closeEditItem);
 
-    document.getElementById('save-edit-item').addEventListener('click', () => {
+    document.getElementById('save-edit-item').addEventListener('click', async () => {
       const item = inventoryData.find(i => i.id === editingId);
       if (!item) return;
 
@@ -960,20 +883,27 @@
       }
       const qtyVal = parseInt(document.getElementById('edit-qty').value, 10);
 
-      item.name = name;
-      item.qty = isNaN(qtyVal) || qtyVal < 0 ? 1 : qtyVal;
-      item.expiry = editExpiry.getValue();
-      item.zone = document.getElementById('edit-zone').value;
-      saveItems();
+      const saved = await tryStore(() => ItemStore.update({
+        ...item,
+        name,
+        qty: isNaN(qtyVal) || qtyVal < 0 ? 1 : qtyVal,
+        expiry: editExpiry.getValue(),
+        zone: document.getElementById('edit-zone').value
+      }));
+      if (!saved) return;
 
+      await reloadItems();
       closeEditItem();
       refreshCurrentView();
     });
 
-    document.getElementById('delete-edit-item').addEventListener('click', () => {
+    document.getElementById('delete-edit-item').addEventListener('click', async () => {
       if (editingId == null) return;
       if (!confirm('Remove this item from the fridge?')) return;
-      removeItem(editingId);
+      const removed = await tryStore(() => ItemStore.remove(editingId));
+      if (!removed) return;
+
+      await reloadItems();
       closeEditItem();
       refreshCurrentView();
     });
@@ -993,10 +923,15 @@
     }, { threshold: 0.15 });
     revealObserver.observe(document.getElementById('expiry-card'));
 
-    updateExpiryAlert();
-
-    // After returning from scan/scan.html with new items, show them.
-    if (importedFromScan) selectCategory('all');
+    // Startup: take in scanned items, load data, then render the home page.
+    async function init() {
+      const imported = await importPendingScan();
+      await reloadItems();
+      updateExpiryAlert();
+      // After returning from scan/scan.html with new items, show them.
+      if (imported) selectCategory('all');
+    }
+    init();
   </script>
 </body>
 </html>
